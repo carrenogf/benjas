@@ -1,3 +1,4 @@
 pandas
 firebase_admin
 google-cloud-storage
+plotly
