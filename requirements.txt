@@ -1,2 +1,3 @@
 pandas
-firebase
+firebase_admin
+google-cloud-storage
