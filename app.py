@@ -15,6 +15,8 @@ st.info(
     - **💵 Ingresos:** Registra las ventas y servicios realizados.
     - **📉 Gastos:** Lleva un control de todos los gastos del negocio.
     - **📊 Dashboard:** Visualiza los indicadores clave de tu barbería.
+    - **👥 Clientes:** Gestiona la base de datos de clientes.
+    - **💳 Membresías:** Administra las membresías de los clientes.
     """
 )
 

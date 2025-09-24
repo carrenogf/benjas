@@ -13,13 +13,31 @@ db = admin_fs.client()
 
 
 @st.cache_data
+def get_clientes():
+    """Obtiene los clientes activos de Firebase y los cachea."""
+    clientes = db.collection("clientes").where(filter=gcfs.FieldFilter("activo", "==", True)).stream()
+    clientes_list = []
+    for c in clientes:
+        data = c.to_dict()
+        clientes_list.append({
+            'dni': c.id,
+            'nombre': data.get('nombre', ''),
+            'display_name': f"{data.get('nombre', '')} (DNI: {c.id})"
+        })
+    
+    # Ordenar por nombre
+    clientes_list.sort(key=lambda x: x['nombre'])
+    return clientes_list
+
+
+@st.cache_data
 def get_productos():
     """Obtiene los productos activos de Firebase y los cachea."""
     # Consulta 1: Productos donde 'activo' es explícitamente True
-    productos_activos_ref = db.collection("productos").where("activo", "==", True).stream()
+    productos_activos_ref = db.collection("productos").where(filter=gcfs.FieldFilter("activo", "==", True)).stream()
     
     # Consulta 2: Productos donde el campo 'activo' no existe (para compatibilidad con datos antiguos)
-    productos_sin_campo_activo_ref = db.collection("productos").where("activo", "==", None).stream()
+    productos_sin_campo_activo_ref = db.collection("productos").where(filter=gcfs.FieldFilter("activo", "==", None)).stream()
 
     productos_dict = {}
     # Usamos un diccionario para evitar duplicados si un producto apareciera en ambas consultas (poco probable)
@@ -38,12 +56,19 @@ def get_productos():
 def ingresos_ui():
     st.subheader("💵 Registro de Ingresos")
 
-    # Limpiar la caché de productos cada vez que se carga la página para asegurar datos frescos.
+    # Limpiar la caché de productos y clientes cada vez que se carga la página para asegurar datos frescos.
     get_productos.clear()
+    get_clientes.clear()
 
     productos = get_productos()
+    clientes = get_clientes()
+    
     product_names = ["-- Ingreso Manual --"] + [p['nombre'] for p in productos]
     product_map = {p['nombre']: p for p in productos}
+    
+    # Preparar opciones para clientes
+    cliente_options = ["-- Cliente Manual --"] + [c['display_name'] for c in clientes]
+    cliente_map = {c['display_name']: c for c in clientes}
 
     selected_product_name = st.selectbox(
         "Producto/Servicio (opcional)", 
@@ -58,7 +83,18 @@ def ingresos_ui():
     with st.form("nuevo_ingreso"):
         fecha_ingreso = st.date_input("Fecha del Ingreso", value=date.today())
 
-        cliente = st.text_input("Cliente")
+        # Selector de cliente
+        selected_cliente = st.selectbox(
+            "Cliente",
+            options=cliente_options,
+            help="Selecciona un cliente registrado o elige 'Cliente Manual' para ingresar manualmente"
+        )
+        
+        # Campo manual para cliente si se selecciona esa opción
+        cliente_manual = ""
+        if selected_cliente == "-- Cliente Manual --":
+            cliente_manual = st.text_input("Nombre del Cliente (manual)")
+        
         operador = st.text_input("Operador")
         metodo_pago = st.selectbox("Método de pago", ["efectivo", "débito", "crédito", "transferencia", "qr", "mp"])
         monto = st.number_input("Monto total (ARS)", min_value=0.0, step=100.0, value=initial_monto, key="monto_input")
@@ -66,6 +102,20 @@ def ingresos_ui():
         submitted = st.form_submit_button("➕ Registrar")
 
         if submitted and monto > 0:
+            # Determinar el nombre del cliente
+            cliente_nombre = ""
+            cliente_dni = ""
+            
+            if selected_cliente == "-- Cliente Manual --":
+                if not cliente_manual:
+                    st.error("Debe ingresar el nombre del cliente manualmente o seleccionar uno de la lista.")
+                    return
+                cliente_nombre = cliente_manual
+            else:
+                cliente_data = cliente_map[selected_cliente]
+                cliente_nombre = cliente_data['nombre']
+                cliente_dni = cliente_data['dni']
+
             items_list = []
             if selected_product_name != "-- Ingreso Manual --":
                 selected_product_obj = product_map[selected_product_name]
@@ -77,7 +127,8 @@ def ingresos_ui():
 
             doc = {
                 "fecha": datetime.combine(fecha_ingreso, datetime.min.time()),
-                "cliente": cliente,
+                "cliente": cliente_nombre,
+                "cliente_dni": cliente_dni if cliente_dni else None,
                 "operador": operador,
                 "metodo_pago": metodo_pago,
                 "consumicion": consumicion,
